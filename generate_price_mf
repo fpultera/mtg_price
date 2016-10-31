@@ -1,0 +1,58 @@
+#!/bin/bash
+
+###XXX saco el precio
+#cat tmp |grep Precio -A1|tail -1|cut -d "$" -f2|sed -e :a -e 's/<[^>]*>//g;/</N;//ba'|sed 's/.$//'|sed 's/.$//'
+
+###XXX Obtengo datos de la wwb
+#curl -o tmp 'http://www.magic4ever.com.ar/index.php?route=product/product&product_id=1990'  2>/dev/null
+
+###XXX NOmbre
+#|grep "Nombre" -A2|tail -1|cut -d ">" -f2|cut -d "<" -f1|sed -e :a -e 's/<[^>]*>//g;/</N;//ba'
+
+###XXX Edicion
+#|grep "Inicio" -A3|tail -1|cut -d">" -f2|cut -d"<" -f1|sed -e :a -e 's/<[^>]*>//g;/</N;//ba'
+
+id=${1}
+curl_card="http://www.magic4ever.com.ar/index.php?route=product/product&product_id=$id"
+tmp_id=$(mktemp "/tmp/card.XXXXi")
+tmp_curl=$(mktemp "/tmp/card.XXXXi")
+tmp_name=$(mktemp "/tmp/card.XXXXi")
+tmp_edition=$(mktemp "/tmp/card.XXXXi")
+tmp_price=$(mktemp "/tmp/card.XXXXi")
+
+function card_id {
+  echo $id > $tmp_id
+}
+
+function card_price {
+  curl -o $tmp_curl -A "Mozilla/4.0" $curl_card  2>/dev/null
+  price=$(cat $tmp_curl |grep Precio -A1|tail -1|cut -d "$" -f2|sed -e :a -e 's/<[^>]*>//g;/</N;//ba')
+  echo "  \"price\": \"$price\"" > $tmp_price
+}
+
+function card_name {
+  name=$(cat $tmp_curl |grep "Nombre" -A2|tail -1|cut -d ">" -f2|cut -d "<" -f1|sed -e :a -e 's/<[^>]*>//g;/</N;//ba')
+  echo "  \"name\": \"$name\"," > $tmp_name
+}
+
+function card_edition {
+  edition=$(cat $tmp_curl |grep "Inicio" -A3|tail -1|cut -d">" -f2|cut -d"<" -f1|sed -e :a -e 's/<[^>]*>//g;/</N;//ba')
+  echo "  \"edition\": \"$edition\"," > $tmp_edition
+}
+
+card_id
+card_price
+card_name
+card_edition
+
+echo "{" > ${id}_mf.json
+echo "  \"id\": \"$id\"," >> ${id}_mf.json
+echo "  \"seller\": \"Magic 4 Ever\"," >> ${id}_mf.json
+cat $tmp_name >> ${id}_mf.json
+cat $tmp_edition >> ${id}_mf.json
+cat $tmp_price >> ${id}_mf.json
+echo "}" >> ${id}_mf.json
+
+###XXX Meto las cosas en el elastic
+curl -XPOST http://localhost:9200/mtg/cards/mf_$id --data-binary @${id}_mf.json
+

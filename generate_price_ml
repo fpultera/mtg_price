@@ -1,0 +1,61 @@
+#!/bin/bash
+
+###XXX Obtener carta
+# curl -C - -o sasd -A "Mozilla/4.0" 'http://www.magiclair.com.ar/index.php?accion=2A&dato1=1176&viene=0'
+
+###XXX Edicion
+#cat $tmp |grep contenido -A7|tail -1|cut -d "<" -f1|sed -e :a -e 's/<[^>]*>//g;/</N;//ba'
+
+###XXX Nombre
+#cat sasd |grep "nombre" -A11|tail -1|cut -d "-" -f1|sed -e :a -e 's/<[^>]*>//g;/</N;//ba'
+
+###XXX Precio
+#cat sasd  |grep "nombre" -A12|tail -1|cut -d "-" -f1|sed -e :a -e 's/<[^>]*>//g;/</N;//ba'|cut -d "$" -f2
+
+id=${1}
+curl_card="http://www.magiclair.com.ar/index.php?accion=2A&dato1=$id&viene=0"
+tmp_id=$(mktemp "/tmp/card.XXXXi")
+tmp_curl=$(mktemp "/tmp/card.XXXXi")
+tmp_name=$(mktemp "/tmp/card.XXXXi")
+tmp_edition=$(mktemp "/tmp/card.XXXXi")
+tmp_price=$(mktemp "/tmp/card.XXXXi")
+
+function card_id {
+  echo $id > $tmp_id
+}
+
+function card_name {
+  curl -C - -o $tmp_curl -A "Mozilla/4.0" $curl_card  2>/dev/null 
+  name=$(cat $tmp_curl |grep nombre -A11|tail -1|cut -d "-" -f1|sed -e :a -e 's/<[^>]*>//g;/</N;//ba'|sed 's/.$//')
+  echo "  \"name\": \"$name\"," > $tmp_name
+}
+
+function card_edition {
+  edition=$(cat $tmp_curl |grep contenido -A7|tail -1|cut -d "<" -f1|sed -e :a -e 's/<[^>]*>//g;/</N;//ba')
+  echo "  \"edition\": \"$edition\"," > $tmp_edition
+}
+
+function card_price {
+  price=$(cat $tmp_curl |grep "nombre" -A12|tail -1|cut -d "-" -f1|sed -e :a -e 's/<[^>]*>//g;/</N;//ba'|cut -d "$" -f2|sed 's/.$//')
+  echo "  \"price\": \"$price\"" > $tmp_price
+}
+
+card_id
+card_name
+card_edition
+card_price
+
+echo "{" > $id_ml.json
+echo "  \"id\": \"$id\"," >> $id_ml.json
+echo "  \"seller\": \"Magic Lair\"," >> $id_ml.json
+cat $tmp_name >> $id_ml.json
+cat $tmp_edition >> $id_ml.json
+cat $tmp_price >> $id_ml.json
+echo "}" >> $id_ml.json
+
+###XXX Meto las cosas en el elastic
+curl -XPOST http://localhost:9200/mtg/cards/ml_$id --data-binary @$id_ml.json 2>/dev/null 1>/dev/null
+
+cat $tmp_name
+
+rm -rf $tmp_name $tmp_edition $tmp_price $tmp_id $tmp_curl
